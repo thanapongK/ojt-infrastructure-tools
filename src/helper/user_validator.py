@@ -1,0 +1,152 @@
+"""
+User Data Validation Utility
+Provides validation functions for user DataFrame operations
+"""
+
+import logging
+from typing import Tuple, Dict, Any
+from pyspark.sql import DataFrame
+from pyspark.sql.functions import col, trim, lit
+
+logger = logging.getLogger(__name__)
+
+
+class UserValidator:
+    """Validator for user data operations"""
+
+    # Expected column headers
+    REQUIRED_HEADERS = ["first_name", "last_name", "email", "phone", "gender"]
+
+    # Validation patterns
+    EMAIL_PATTERN = r"^[a-zA-Z0-9._%+-]+@ais\.com$"
+    PHONE_PATTERN = r"^\d{10}$"
+
+    @staticmethod
+    def validate_headers(df: DataFrame) -> bool:
+        if df is None or df.count() == 0:
+            return True
+
+        actual_columns = df.columns
+        required_set = set(UserValidator.REQUIRED_HEADERS)
+        actual_set = set(actual_columns)
+
+        missing = list(required_set - actual_set)
+        extra = list(actual_set - required_set)
+
+        if missing or extra:
+            return False
+
+        if actual_columns != UserValidator.REQUIRED_HEADERS:
+            return False
+
+        return True
+
+    @staticmethod
+    def fix_headers(df: DataFrame) -> DataFrame:
+        if df is None or df.count() == 0:
+            return df
+
+        try:
+            actual_columns = df.columns
+            required_set = set(UserValidator.REQUIRED_HEADERS)
+            actual_set = set(actual_columns)
+
+            missing = list(required_set - actual_set)
+            extra = list(actual_set - required_set)
+
+            df_fixed = df.select(
+                [col_name for col_name in actual_columns if col_name in required_set]
+            )
+
+            for col_name in missing:
+                df_fixed = df_fixed.withColumn(col_name, lit(None).cast("string"))
+
+            df_fixed = df_fixed.select(UserValidator.REQUIRED_HEADERS)
+            return df_fixed
+
+        except Exception as e:
+            raise ValueError(f"Header fix error: {str(e)}")
+
+    @staticmethod
+    def remove_duplicate_emails(df: DataFrame) -> DataFrame:
+        if df is None or df.count() == 0:
+            return df
+
+        if "email" not in df.columns:
+            return df
+
+        return df.dropDuplicates(["email"])
+
+    @staticmethod
+    def validate_data(df: DataFrame) -> DataFrame:
+        if df is None or df.count() == 0:
+            return df
+
+        try:
+            required_cols = ["first_name", "last_name", "email", "phone"]
+            missing_cols = [
+                col_name for col_name in required_cols if col_name not in df.columns
+            ]
+
+            if missing_cols:
+                raise ValueError(f"Missing required columns: {', '.join(missing_cols)}")
+
+            valid_df = df.filter(
+                (col("email").rlike(UserValidator.EMAIL_PATTERN))
+                & (col("first_name").isNotNull())
+                & (trim(col("first_name")) != "")
+                & (col("last_name").isNotNull())
+                & (trim(col("last_name")) != "")
+                & (col("phone").rlike(UserValidator.PHONE_PATTERN))
+            )
+
+            return valid_df
+
+        except ValueError:
+            raise
+        except Exception as e:
+            raise ValueError(f"Data validation error: {str(e)}")
+
+    @staticmethod
+    def validate_all(df: DataFrame, auto_fix_headers: bool = True) -> DataFrame:
+        if df is None or df.count() == 0:
+            return df
+
+        try:
+            if auto_fix_headers:
+                df_with_fixed_headers = UserValidator.fix_headers(df)
+            else:
+                if not UserValidator.validate_headers(df):
+                    raise ValueError("Invalid headers")
+                df_with_fixed_headers = df
+
+            df_deduplicated = UserValidator.remove_duplicate_emails(
+                df_with_fixed_headers
+            )
+            valid_df = UserValidator.validate_data(df_deduplicated)
+            return valid_df
+
+        except ValueError:
+            raise
+        except Exception as e:
+            raise ValueError(f"Validation pipeline error: {str(e)}")
+
+
+def validate_headers(df: DataFrame) -> bool:
+    return UserValidator.validate_headers(df)
+
+
+def fix_headers(df: DataFrame) -> DataFrame:
+    return UserValidator.fix_headers(df)
+
+
+def remove_duplicate_emails(df: DataFrame) -> DataFrame:
+    return UserValidator.remove_duplicate_emails(df)
+
+
+def validate_data(df: DataFrame) -> DataFrame:
+    return UserValidator.validate_data(df)
+
+
+def validate_all(df: DataFrame, auto_fix_headers: bool = True) -> DataFrame:
+    return UserValidator.validate_all(df, auto_fix_headers)
