@@ -28,6 +28,9 @@ class MinioConfiguration:
     OUTPUT_CSV_DATA = "raw_valid_user_csv_data"
     OUTPUT_JSON_DATA = "simple_json_data"
 
+    # Cross-database transfer filenames
+    RAW_VALID_DATA_USER = "raw_valid_data_user"
+
     # Write configuration
     DEFAULT_FORMAT = "delta"
     DEFAULT_MODE = "overwrite"

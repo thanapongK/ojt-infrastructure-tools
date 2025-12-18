@@ -31,13 +31,18 @@ from pyeqx.opentelemetry.instrumentation import initialize_telemetry
 from pyeqx.opentelemetry.spark import configure_spark_options
 
 from app.utils import parse_telemetry_config
-from helper.standard_result import StandardResult
-from helper.minio_manager import MinioManager
-from helper.postgres_manager import PostgresManager
-from helper.mongodb_manager import MongoDBManeger
-from config.mongo_configuration import MongoConfiguration
-from config.postgres_configuration import PostgresConfiguration
-from models.schemas import get_raw_valid_data_user_schema
+from config import (
+    MinioConfiguration,
+    MongoConfiguration,
+    PostgresConfiguration,
+)
+from helper import (
+    CrossDatabaseManager,
+    MinioManager,
+    MongoDBManeger,
+    PostgresManager,
+    StandardResult,
+)
 
 
 @dataclass
@@ -72,11 +77,13 @@ class RunCrossDatabaseProcess(Process):
     """
 
     __debug_mode: bool = False
+    __cross_db_manager: CrossDatabaseManager = None
     __minio_manager: MinioManager = None
     __postgres_manager: PostgresManager = None
     __mongodb_manager: MongoDBManeger = None
-    __mongo_param = None
-    __postgres_param = None
+    __mongo_param: str = None
+    __postgres_param: str = None
+    __minio_param: str = None
 
     def __init__(
         self,
@@ -93,13 +100,14 @@ class RunCrossDatabaseProcess(Process):
         try:
             spark = self.operation.get_current_spark_session()
 
+            self.__cross_db_manager = CrossDatabaseManager()
             self.__minio_manager = MinioManager(spark=spark)
             self.__postgres_manager = PostgresManager(spark=spark)
             self.__mongodb_manager = MongoDBManeger(spark=spark)
 
             self.__mongo_param = MongoConfiguration.mongo_param
             self.__postgres_param = PostgresConfiguration.postgres_param
-            self.__schema = get_raw_valid_data_user_schema
+            self.__minio_param = MinioConfiguration.minio_param
 
         except Exception as e:
             StandardResult.error("Failed to configure cross-database managers", error=e)
@@ -124,11 +132,9 @@ class RunCrossDatabaseProcess(Process):
 
     def _transfer_mongo_to_postgres(self):
         try:
-            mongo_df = self.__mongodb_manager.read_data(db_name=self.__mongo_param)
-            self.__postgres_manager.cross_version_to(
-                read="mongodb",
-                write="postgresql",
-                db_name=self.__postgres_param,
+            self.__cross_db_manager.cross_version_to(
+                read=self.__mongo_param,
+                write=self.__postgres_param,
             )
 
         except Exception as e:
@@ -136,14 +142,10 @@ class RunCrossDatabaseProcess(Process):
 
     def _transfer_postgres_to_mongo(self):
         try:
-            pg_df = self.__postgres_manager.read_data(
-                db_name=self.__postgres_param, table_name=PostgresConfiguration.TABLE
-            )
 
-            self.__mongodb_manager.cross_version_to(
-                read="postgresql",
-                write="mongodb",
-                db_name=self.__mongo_param,
+            self.__cross_db_manager.cross_version_to(
+                read=self.__postgres_param,
+                write=self.__mongo_param,
             )
 
         except Exception as e:
@@ -151,15 +153,30 @@ class RunCrossDatabaseProcess(Process):
 
     def _transfer_mongo_to_s3(self):
         try:
-            mongo_df = self.__mongodb_manager.read_data(db_name=self.__mongo_param)
+            result = self.__cross_db_manager.cross_data_to(
+                read=self.__mongo_param,
+                write=self.__minio_param,
+                source_collection=MongoConfiguration.COLLECTION,
+                target_path=MongoConfiguration.TRANSFER_TARGET_PATH,
+                output_filename=MongoConfiguration.TRANSFER_OUTPUT_FILENAME,
+                format=MinioConfiguration.DEFAULT_FORMAT,
+                mode=MinioConfiguration.DEFAULT_MODE,
+            )
 
-            self.__minio_manager.cross_data_to(
-                read="mongodb",
-                write="s3",
-                s3_path="silver",
-                output_filename="mongo_to_s3_transfer",
-                format="delta",
-                mode="overwrite",
+            if result is None:
+                StandardResult.error(
+                    "No data transferred from MongoDB to S3", error=None
+                )
+                return
+
+            StandardResult.show_log_info(
+                [
+                    f"Transfer completed: {result['row_count']} records",
+                    f"{result['source']} → {result['target']} (delta format)",
+                    "Path: ojt/mongodb",
+                ],
+                level="info",
+                prefix="✅ ",
             )
 
         except Exception as e:
@@ -167,14 +184,33 @@ class RunCrossDatabaseProcess(Process):
 
     def _transfer_s3_to_mongo(self):
         try:
-            s3_path = "s3a://ojtbucket/silver/mongo_to_s3_transfer"
-            s3_df = self.__minio_manager.read_data_from_s3(path=s3_path, format="delta")
+            source_path = self.__minio_manager.build_s3_path(
+                bucket=MinioConfiguration.MINIO_BUCKET,
+                layer=MinioConfiguration.S3_LAYER_SILVER,
+                filename=MinioConfiguration.RAW_VALID_DATA_USER,
+                is_directory=True,
+            )
 
-            self.__mongodb_manager.transfer_validated_user_data(
-                write="mongodb",
-                source_path=s3_path,
-                target_name=MongoConfiguration.COLLECTION,
-                mode="overwrite",
+            total_records, valid_records, invalid_records = (
+                self.__cross_db_manager.transfer_validated_user_data(
+                    write=self.__mongo_param,
+                    source_path=source_path,
+                    target_name=MongoConfiguration.USER_COLLECTION,
+                    mode=MongoConfiguration.DEFAULT_MODE,
+                )
+            )
+
+            StandardResult.show_log_info(
+                [
+                    "Transfer completed with validation:",
+                    f"Total records: {total_records}",
+                    f"Valid records: {valid_records}",
+                    f"Invalid records: {invalid_records}",
+                    "S3 (silver/raw_valid_data_user) → MongoDB (collection: user)",
+                    "Mode: overwrite",
+                ],
+                level="info",
+                prefix="✅ ",
             )
 
         except Exception as e:
@@ -182,17 +218,30 @@ class RunCrossDatabaseProcess(Process):
 
     def _transfer_postgres_to_s3(self):
         try:
-            pg_df = self.__postgres_manager.read_data(
-                db_name=self.__postgres_param, table_name="mongo_to_postgres_transfer"
+            result = self.__cross_db_manager.cross_data_to(
+                read=self.__postgres_param,
+                write=self.__minio_param,
+                source_table=PostgresConfiguration.TABLE,
+                target_path=PostgresConfiguration.TRANSFER_TARGET_PATH,
+                output_filename=PostgresConfiguration.TRANSFER_OUTPUT_FILENAME,
+                format=MinioConfiguration.DEFAULT_FORMAT,
+                mode=MinioConfiguration.DEFAULT_MODE,
             )
 
-            self.__minio_manager.cross_data_to(
-                read="postgresql",
-                write="s3",
-                s3_path="silver",
-                output_filename="postgres_to_s3_transfer",
-                format="delta",
-                mode="overwrite",
+            if result is None:
+                StandardResult.error(
+                    "No data transferred from PostgreSQL to S3", error=None
+                )
+                return
+
+            StandardResult.show_log_info(
+                [
+                    f"Transfer completed: {result['row_count']} records",
+                    f"{result['source']} → {result['target']} (delta format)",
+                    "Path: ojt/postgresql",
+                ],
+                level="info",
+                prefix="✅ ",
             )
 
         except Exception as e:
@@ -200,14 +249,33 @@ class RunCrossDatabaseProcess(Process):
 
     def _transfer_s3_to_postgres(self):
         try:
-            s3_path = "s3a://ojtbucket/silver/postgres_to_s3_transfer"
-            s3_df = self.__minio_manager.read_data_from_s3(path=s3_path, format="delta")
+            source_path = self.__minio_manager.build_s3_path(
+                bucket=MinioConfiguration.MINIO_BUCKET,
+                layer=MinioConfiguration.S3_LAYER_SILVER,
+                filename=MinioConfiguration.RAW_VALID_DATA_USER,
+                is_directory=True,
+            )
 
-            self.__postgres_manager.transfer_validated_user_data(
-                write="postgresql",
-                source_path=s3_path,
-                target_name="s3_to_postgres_transfer",
-                mode="overwrite",
+            total_records, valid_records, invalid_records = (
+                self.__cross_db_manager.transfer_validated_user_data(
+                    write=self.__postgres_param,
+                    source_path=source_path,
+                    target_name=PostgresConfiguration.USER_TABLE,
+                    mode=PostgresConfiguration.DEFAULT_MODE,
+                )
+            )
+
+            StandardResult.show_log_info(
+                [
+                    "Transfer completed with validation:",
+                    f"Total records: {total_records}",
+                    f"Valid records: {valid_records}",
+                    f"Invalid records: {invalid_records}",
+                    "S3 (silver/raw_valid_data_user) → PostgreSQL (table: user)",
+                    "Mode: overwrite",
+                ],
+                level="info",
+                prefix="✅ ",
             )
 
         except Exception as e:

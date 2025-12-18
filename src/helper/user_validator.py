@@ -7,7 +7,7 @@ import logging
 from typing import Tuple, Dict, Any
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
-from helper.standard_result import StandardResult
+from helper import StandardResult
 
 logger = logging.getLogger(__name__)
 

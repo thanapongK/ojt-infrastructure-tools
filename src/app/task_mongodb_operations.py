@@ -31,9 +31,8 @@ from pyeqx.opentelemetry.instrumentation import initialize_telemetry
 from pyeqx.opentelemetry.spark import configure_spark_options
 
 from app.utils import parse_telemetry_config
-from helper.standard_result import StandardResult
-from helper.mongodb_manager import MongoDBManeger
-from config.mongo_configuration import MongoConfiguration
+from config import MongoConfiguration
+from helper import MongoDBManeger, StandardResult
 
 
 @dataclass

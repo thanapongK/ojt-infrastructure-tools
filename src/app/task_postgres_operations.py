@@ -31,9 +31,8 @@ from pyeqx.opentelemetry.instrumentation import initialize_telemetry
 from pyeqx.opentelemetry.spark import configure_spark_options
 
 from app.utils import parse_telemetry_config
-from helper.standard_result import StandardResult
-from helper.postgres_manager import PostgresManager
-from config.postgres_configuration import PostgresConfiguration
+from config import PostgresConfiguration
+from helper import PostgresManager, StandardResult
 
 
 @dataclass

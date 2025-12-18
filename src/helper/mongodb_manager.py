@@ -16,9 +16,9 @@ if project_root not in sys.path:
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from config.mongo_configuration import MongoConfiguration
+from config import MongoConfiguration
 from config.spark_config import initialize_spark_environment
-from helper.standard_result import StandardResult
+from helper import StandardResult
 from pyeqx.core.operation import Operation
 
 logger = logging.getLogger(__name__)

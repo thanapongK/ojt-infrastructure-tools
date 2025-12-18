@@ -4,7 +4,7 @@ Combines MongoDB and PyEQX configuration in a single class
 """
 
 from pyeqx.core.configuration import Configuration
-from config.minio_configuration import MinioConfiguration
+from config import MinioConfiguration
 
 
 class MongoConfiguration:
@@ -14,9 +14,15 @@ class MongoConfiguration:
     DATABASE = "ojt_demo"
     TEST_DATABASE = "ojt_test"  # Database for testing
     COLLECTION = "db_connect"
+    USER_COLLECTION = "user"
+
+    # Cross-database transfer paths
+    TRANSFER_TARGET_PATH = "ojt/mongodb"
+    TRANSFER_OUTPUT_FILENAME = "mongodb_json"
 
     # Database parameter for method calls
     mongo_param = "mongodb"
+    DEFAULT_MODE = "overwrite"
     # endregion MongoDB Constants
 
     # region MongoDB Helper Methods

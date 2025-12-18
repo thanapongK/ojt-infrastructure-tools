@@ -5,7 +5,7 @@ Combines PostgreSQL and PyEQX configuration in a single class
 
 import os
 from pyeqx.core.configuration import Configuration
-from config.minio_configuration import MinioConfiguration
+from config import MinioConfiguration
 
 
 class PostgresConfiguration:
@@ -18,8 +18,14 @@ class PostgresConfiguration:
     POSTGRES_DB = "ojt_demo"
     TEST_POSTGRES_DB = "ojt_test"  # Database for testing
     TABLE = "db_connect"
+    USER_TABLE = "user"
+
+    # Cross-database transfer paths
+    TRANSFER_TARGET_PATH = "ojt/postgresql"
+    TRANSFER_OUTPUT_FILENAME = "postgresql_json"
 
     # Database parameter for method calls
+    DEFAULT_MODE = "overwrite"
     postgres_param = "postgresql"
     POSTGRES_JDBC_URL = (
         f"jdbc:postgresql://{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"

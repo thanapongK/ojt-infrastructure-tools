@@ -31,9 +31,8 @@ from pyeqx.opentelemetry.instrumentation import initialize_telemetry
 from pyeqx.opentelemetry.spark import configure_spark_options
 
 from app.utils import parse_telemetry_config
-from helper.standard_result import StandardResult
-from helper.minio_manager import MinioManager
-from config.minio_configuration import MinioConfiguration
+from config import MinioConfiguration
+from helper import MinioManager, StandardResult
 
 
 @dataclass

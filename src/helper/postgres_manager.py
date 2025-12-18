@@ -16,9 +16,9 @@ if project_root not in sys.path:
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from config.postgres_configuration import PostgresConfiguration
+from config import PostgresConfiguration
 from config.spark_config import initialize_spark_environment
-from helper.standard_result import StandardResult
+from helper import StandardResult
 from pyeqx.core.operation import Operation
 
 logger = logging.getLogger(__name__)
@@ -215,7 +215,6 @@ class PostgresManager:
 
         except Exception as e:
             StandardResult.error("Failed to insert data", error=e)
-
 
     def update_test_version(
         self,
