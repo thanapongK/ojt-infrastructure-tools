@@ -144,13 +144,13 @@ class CrossDatabaseManager:
 
     # region Database Operations - Write
     def write_to_database(
-        self, df, db_type: str, name: str = None, mode: str = "append"
+        self, data, db_type: str, name: str = None, mode: str = "append"
     ):
         """
         Unified interface to write data to database (MongoDB or PostgreSQL)
 
         Args:
-            df: PySpark DataFrame to write
+            data: PySpark DataFrame to write
             db_type: Database type ('mongodb', 'postgresql')
             name: Collection name (for MongoDB) or Table name (for PostgreSQL)
             mode: Write mode ('append', 'overwrite') (default: 'append')
@@ -167,19 +167,19 @@ class CrossDatabaseManager:
 
         try:
             if db_type == "mongodb":
-                manager.insert_data_to(df=df, collection=name, mode=mode)
+                manager.insert_data_to(data=data, collection=name, mode=mode)
             else:
-                manager.insert_data_to(df=df, table=name, mode=mode)
+                manager.insert_data_to(data=data, table=name, mode=mode)
         except Exception as e:
             logger.error(f"✗ Write failed {db_type}: {e}")
             StandardResult.error(f"Write failed {db_type}: {e}", error=e)
 
-    def write_to_storage(self, df, **kwargs):
+    def write_to_storage(self, data, **kwargs):
         """
         Write data to Object Storage (S3/MinIO)
 
         Args:
-            df: PySpark DataFrame to write
+            data: PySpark DataFrame to write
             **kwargs: Storage-specific parameters
 
         S3/MinIO kwargs:
@@ -204,7 +204,7 @@ class CrossDatabaseManager:
             StandardResult.error("S3/MinIO write requires 'path' parameter")
 
         manager.write_data_to_s3(
-            data=df,
+            data=data,
             s3_path=path,
             output_filename=output_filename,
             format=format,
@@ -319,7 +319,9 @@ class CrossDatabaseManager:
                         f"Missing source container for {read} (use source_collection or source_table)"
                     )
 
-                df = self.read_from_database(db_type=read, container=container)
+                source_data_df = self.read_from_database(
+                    db_type=read, container=container
+                )
 
             elif read in storage_types:
                 source_path = kwargs.get("source_path")
@@ -331,9 +333,9 @@ class CrossDatabaseManager:
                     "path": source_path,
                     "format": kwargs.get("format", "parquet"),
                 }
-                df = self.read_from_storage(**read_kwargs)
+                source_data_df = self.read_from_storage(**read_kwargs)
 
-            row_count = df.count()
+            row_count = source_data_df.count()
             if row_count == 0:
                 StandardResult.error(f"No data found in source: {read}")
 
@@ -351,7 +353,7 @@ class CrossDatabaseManager:
                     )
                 mode = kwargs.get("mode", "append")
                 self.write_to_database(
-                    df=df, db_type=write, name=target_name, mode=mode
+                    data=source_data_df, db_type=write, name=target_name, mode=mode
                 )
 
             elif write in storage_types:
@@ -366,7 +368,7 @@ class CrossDatabaseManager:
                     "partition_by": kwargs.get("partition_by"),
                     "options": kwargs.get("options"),
                 }
-                self.write_to_storage(df=df, **write_kwargs)
+                self.write_to_storage(data=source_data_df, **write_kwargs)
 
             return {
                 "success": True,
@@ -399,20 +401,22 @@ class CrossDatabaseManager:
         try:
             self.ensure_connections(db_type=["s3", write])
 
-            df = self.read_from_storage(path=source_path, format="delta")
-            total_records = df.count()
+            raw_user_df = self.read_from_storage(path=source_path, format="delta")
+            total_records = raw_user_df.count()
 
             if total_records == 0:
                 StandardResult.error(f"No data found in source: {source_path}")
 
-            validated_df = UserValidator.validate_all(df, auto_fix_headers=True)
+            validated_df = UserValidator.validate_all(
+                df=raw_user_df, auto_fix_headers=True
+            )
             valid_records = validated_df.count()
 
             if valid_records == 0:
                 StandardResult.error("No valid records after validation")
 
             self.write_to_database(
-                df=validated_df, db_type=write, name=target_name, mode=mode
+                data=validated_df, db_type=write, name=target_name, mode=mode
             )
 
             invalid_records = total_records - valid_records

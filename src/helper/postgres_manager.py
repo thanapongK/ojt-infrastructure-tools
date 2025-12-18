@@ -165,13 +165,13 @@ class PostgresManager:
             StandardResult.error("Failed to create record", error=e)
 
     def insert_data_to(
-        self, df, table: str | None = None, mode: str = "append"
+        self, data, table: str | None = None, mode: str = "append"
     ) -> None:
         """
         Insert data to PostgreSQL table
 
         Args:
-            df: PySpark DataFrame to insert
+            data: PySpark DataFrame to insert
             table: Table name (if None, uses default self.table)
             mode: Write mode ('append' or 'overwrite')
 
@@ -189,7 +189,7 @@ class PostgresManager:
             quoted_table = f'"{table_name}"'
 
             # Remove auto-increment ID column if present
-            insert_data = df.drop("id") if "id" in df.columns else df
+            insert_data = data.drop("id") if "id" in data.columns else data
             expected_count = insert_data.count()
 
             # Write to PostgreSQL
@@ -216,29 +216,6 @@ class PostgresManager:
         except Exception as e:
             StandardResult.error("Failed to insert data", error=e)
 
-    def update_test_version(
-        conn = psycopg2.connect(
-            host=PostgresConfiguration.POSTGRES_HOST,
-            port=PostgresConfiguration.POSTGRES_PORT,
-            database=PostgresConfiguration.POSTGRES_DB,
-            user=PostgresConfiguration.POSTGRES_USER,
-            password=PostgresConfiguration.POSTGRES_PASSWORD,
-        )
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""DELETE FROM {table_name}
-                WHERE db = %s
-                AND id NOT IN (
-                    SELECT id FROM {table_name}
-                    WHERE db = %s
-                    ORDER BY updated_at DESC
-                    LIMIT 1
-                )""",
-            (db_name, db_name),
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
 
     def update_test_version(
         self,
@@ -303,58 +280,6 @@ class PostgresManager:
 
         except Exception as e:
             StandardResult.error("Failed to update test_version", error=e)
-
-    def insert_data_to(
-        self, df, table: str | None = None, mode: str = "append"
-    ) -> None:
-        """
-        Insert data to PostgreSQL table
-
-        Args:
-            df: PySpark DataFrame to insert
-            table: Table name (if None, uses default self.table)
-            mode: Write mode ('append' or 'overwrite')
-
-        Note:
-            Table names are automatically converted to lowercase and quoted to:
-            1. Ensure case-insensitive behavior (quoted lowercase = standard PostgreSQL)
-            2. Handle reserved keywords safely ('user', 'order', 'group', etc.)
-            3. Maintain consistency across all operations
-
-            For tables with auto-increment ID (like 'user'), the 'id' column is removed
-            from the DataFrame before insert, allowing PostgreSQL to generate it automatically.
-        """
-        try:
-            table_name = table.lower() if table else self.table.lower()
-            quoted_table = f'"{table_name}"'
-
-            # Remove auto-increment ID column if present
-            insert_data = df.drop("id") if "id" in df.columns else df
-            expected_count = insert_data.count()
-
-            # Write to PostgreSQL
-            writer = self._operation.get_writer()
-            writer.write_to_postgresql(
-                data=insert_data,
-                mode=mode,
-                url=PostgresConfiguration.POSTGRES_JDBC_URL,
-                table=quoted_table,
-                options={
-                    "driver": "org.postgresql.Driver",
-                    "user": PostgresConfiguration.POSTGRES_USER,
-                    "password": PostgresConfiguration.POSTGRES_PASSWORD,
-                },
-            )
-
-            # Verify insertion
-            actual_count = self.read_data(table=quoted_table).count()
-            if actual_count == 0 and expected_count > 0:
-                StandardResult.error(
-                    f"Insert verification failed: Expected {expected_count} rows but found 0 in {quoted_table}"
-                )
-
-        except Exception as e:
-            StandardResult.error("Failed to insert data", error=e)
 
     # endregion
 

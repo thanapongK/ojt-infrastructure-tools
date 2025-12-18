@@ -88,14 +88,14 @@ class RunPostgresProcess(Process):
         assert isinstance(parameters, PostgresExecutionParameters)
 
         try:
-            self._test_connection()
+            self._ensure_connection()
             self._update_version()
             self._read_version()
 
         except Exception as e:
             StandardResult.error("PostgreSQL workflow failed", error=e)
 
-    def _test_connection(self):
+    def _ensure_connection(self):
         try:
             self.__manager.ensure_connection()
         except Exception as e:

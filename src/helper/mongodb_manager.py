@@ -71,8 +71,8 @@ class MongoDBManeger:
     # region Database Operations - Validate
     def ensure_connection(self):
         try:
-            df = self.read_data()
-            _ = df.count()
+            ensure_data = self.read_data()
+            _ = ensure_data.count()
             return True
         except Exception as e:
             StandardResult.error("MongoDB connection failed", error=e)
@@ -162,12 +162,12 @@ class MongoDBManeger:
         except Exception as e:
             StandardResult.error("Failed to create record", error=e)
 
-    def insert_data_to(self, df, collection: str | None = None, mode: str = "append"):
+    def insert_data_to(self, data, collection: str | None = None, mode: str = "append"):
         """
         Insert data to MongoDB collection
 
         Args:
-            df: PySpark DataFrame to insert
+            data: PySpark DataFrame to insert
             collection: Collection name (if None, uses default self.collection)
             mode: Write mode ('append' or 'overwrite')
 
@@ -179,7 +179,7 @@ class MongoDBManeger:
             writer = self._operation.get_writer()
             storage_props = self._operation.get_storage_properties("mongodb")
             writer.write_to_mongodb(
-                data=df,
+                data=data,
                 mode=mode,  # append or overwrite
                 uri=storage_props.uri,
                 db=storage_props.db,
@@ -189,19 +189,6 @@ class MongoDBManeger:
 
         except Exception as e:
             StandardResult.error("Failed to insert data", error=e)
-
-    def update_test_version(
-        self, props, db_name: str | None, collection_name: str | None
-    ):
-        client = MongoClient(props.uri)
-        db_conn = client[props.db]
-        collection = db_conn[collection_name]
-        latest_doc = collection.find_one({"db": db_name}, sort=[("updated_at", -1)])
-
-        if latest_doc:
-            collection.delete_many({"db": db_name, "_id": {"$ne": latest_doc["_id"]}})
-
-        client.close()
 
     def update_test_version(
         self,
@@ -270,34 +257,6 @@ class MongoDBManeger:
 
         except Exception as e:
             StandardResult.error("Failed to update test_version", error=e)
-
-    def insert_data_to(self, df, collection: str | None = None, mode: str = "append"):
-        """
-        Insert data to MongoDB collection
-
-        Args:
-            df: PySpark DataFrame to insert
-            collection: Collection name (if None, uses default self.collection)
-            mode: Write mode ('append' or 'overwrite')
-
-        Returns:
-            dict: Result with success status and details
-        """
-        try:
-            collection_name = collection if collection is not None else self.collection
-            writer = self._operation.get_writer()
-            storage_props = self._operation.get_storage_properties("mongodb")
-            writer.write_to_mongodb(
-                data=df,
-                mode=mode,  # append or overwrite
-                uri=storage_props.uri,
-                db=storage_props.db,
-                table=collection_name,
-                options={},
-            )
-
-        except Exception as e:
-            StandardResult.error("Failed to insert data", error=e)
 
     # endregion
 

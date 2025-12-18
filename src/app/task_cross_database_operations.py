@@ -125,11 +125,10 @@ class RunCrossDatabaseProcess(Process):
     def _transfer_mongo_to_postgres(self):
         try:
             mongo_df = self.__mongodb_manager.read_data(db_name=self.__mongo_param)
-            self.__postgres_manager.write_data(
-                df=mongo_df,
+            self.__postgres_manager.cross_version_to(
+                read="mongodb",
+                write="postgresql",
                 db_name=self.__postgres_param,
-                table_name=PostgresConfiguration.TABLE,
-                mode="overwrite",
             )
 
         except Exception as e:
@@ -141,11 +140,10 @@ class RunCrossDatabaseProcess(Process):
                 db_name=self.__postgres_param, table_name=PostgresConfiguration.TABLE
             )
 
-            self.__mongodb_manager.write_data(
-                df=pg_df,
+            self.__mongodb_manager.cross_version_to(
+                read="postgresql",
+                write="mongodb",
                 db_name=self.__mongo_param,
-                collection_name=MongoConfiguration.COLLECTION,
-                mode="overwrite",
             )
 
         except Exception as e:
@@ -155,8 +153,9 @@ class RunCrossDatabaseProcess(Process):
         try:
             mongo_df = self.__mongodb_manager.read_data(db_name=self.__mongo_param)
 
-            self.__minio_manager.write_data_to_s3(
-                data=mongo_df,
+            self.__minio_manager.cross_data_to(
+                read="mongodb",
+                write="s3",
                 s3_path="silver",
                 output_filename="mongo_to_s3_transfer",
                 format="delta",
@@ -171,10 +170,10 @@ class RunCrossDatabaseProcess(Process):
             s3_path = "s3a://ojtbucket/silver/mongo_to_s3_transfer"
             s3_df = self.__minio_manager.read_data_from_s3(path=s3_path, format="delta")
 
-            self.__mongodb_manager.write_data(
-                df=s3_df,
-                db_name=self.__mongo_param,
-                collection_name=MongoConfiguration.COLLECTION,
+            self.__mongodb_manager.transfer_validated_user_data(
+                write="mongodb",
+                source_path=s3_path,
+                target_name=MongoConfiguration.COLLECTION,
                 mode="overwrite",
             )
 
@@ -187,8 +186,9 @@ class RunCrossDatabaseProcess(Process):
                 db_name=self.__postgres_param, table_name="mongo_to_postgres_transfer"
             )
 
-            self.__minio_manager.write_data_to_s3(
-                data=pg_df,
+            self.__minio_manager.cross_data_to(
+                read="postgresql",
+                write="s3",
                 s3_path="silver",
                 output_filename="postgres_to_s3_transfer",
                 format="delta",
@@ -203,10 +203,10 @@ class RunCrossDatabaseProcess(Process):
             s3_path = "s3a://ojtbucket/silver/postgres_to_s3_transfer"
             s3_df = self.__minio_manager.read_data_from_s3(path=s3_path, format="delta")
 
-            self.__postgres_manager.write_data(
-                df=s3_df,
-                db_name=self.__postgres_param,
-                table_name="s3_to_postgres_transfer",
+            self.__postgres_manager.transfer_validated_user_data(
+                write="postgresql",
+                source_path=s3_path,
+                target_name="s3_to_postgres_transfer",
                 mode="overwrite",
             )
 

@@ -88,14 +88,14 @@ class RunMongoDBProcess(Process):
         assert isinstance(parameters, MongoDBExecutionParameters)
 
         try:
-            self._test_connection()
+            self._ensure_connection()
             self._update_version()
             self._read_version()
 
         except Exception as e:
             StandardResult.error("MongoDB workflow failed", error=e)
 
-    def _test_connection(self):
+    def _ensure_connection(self):
         try:
             self.__manager.ensure_connection()
         except Exception as e:

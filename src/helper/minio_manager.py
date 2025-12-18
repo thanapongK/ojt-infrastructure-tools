@@ -323,7 +323,7 @@ class MinioManager:
             dict: Upload result
         """
         try:
-            if df is None and local_file_path:
+            if data is None and local_file_path:
                 reader = self._operation.get_reader()
 
                 # Detect source file format from extension
@@ -339,7 +339,7 @@ class MinioManager:
                 else:
                     read_options = options
 
-                local_data_df = reader.read_from(
+                data = reader.read_from(
                     format=source_format,
                     path=local_file_path,
                     schema=schema,
@@ -347,7 +347,7 @@ class MinioManager:
                 )
 
             if data is None:
-                StandardResult.error("Either df or local_file_path is required")
+                StandardResult.error("Either data or local_file_path is required")
 
             bucket = MinioConfiguration.MINIO_BUCKET
             writer = self._operation.get_writer()
