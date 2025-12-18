@@ -61,8 +61,8 @@ class CrossDatabaseExecutionParameters(ExecuteParameters):
 
 class RunCrossDatabaseProcess(Process):
     """
-    Process สำหรับ Cross-Database Operations
-    รองรับ 6 operations:
+    Process for Cross-Database Operations
+    Supports 6 operations:
     1. MongoDB → PostgreSQL
     2. PostgreSQL → MongoDB
     3. MongoDB → S3
@@ -156,7 +156,7 @@ class RunCrossDatabaseProcess(Process):
             mongo_df = self.__mongodb_manager.read_data(db_name=self.__mongo_param)
 
             self.__minio_manager.write_data_to_s3(
-                df=mongo_df,
+                data=mongo_df,
                 s3_path="silver",
                 output_filename="mongo_to_s3_transfer",
                 format="delta",
@@ -188,7 +188,7 @@ class RunCrossDatabaseProcess(Process):
             )
 
             self.__minio_manager.write_data_to_s3(
-                df=pg_df,
+                data=pg_df,
                 s3_path="silver",
                 output_filename="postgres_to_s3_transfer",
                 format="delta",
@@ -224,7 +224,7 @@ def run_cross_database_process(
 
     spark_executor_service_account = os.getenv("SPARK_EXECUTOR_SERVICE_ACCOUNT")
 
-    # รวม JAR packages ทั้งหมด (Delta, MongoDB, PostgreSQL)
+    # Combined JAR packages (Delta, MongoDB, PostgreSQL)
     jar_packages = [
         "io.delta:delta-spark_2.12:3.3.2",
         "com.amazonaws:aws-java-sdk-bundle:1.12.262",

@@ -29,11 +29,14 @@ DEFAULT_FILE_PATHS = [
     "data/processed",
 ]
 
+S3_PREFIX = MinioConfiguration.S3A_PREFIX
+
 
 class MinioManager:
     _instance = None
     _operation = None
 
+    # region Special Methods
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -45,6 +48,16 @@ class MinioManager:
         if self._operation is None:
             self._initialize()
 
+    # endregion
+
+    # region Properties
+    @property
+    def operation(self):
+        return self._operation
+
+    # endregion
+
+    # region Private Methods
     def _initialize(self):
         try:
             config = MinioConfiguration.get_pyeqx_config()
@@ -60,10 +73,6 @@ class MinioManager:
         except Exception as e:
             StandardResult.error("Failed to initialize MinioManager", error=e)
 
-    @property
-    def operation(self):
-        return self._operation
-
     def _create_minio_client(self):
         return Minio(
             endpoint=MinioConfiguration.get_minio_host(),
@@ -75,18 +84,6 @@ class MinioManager:
     def _create_bucket(self, client, bucket):
         if not client.bucket_exists(bucket):
             client.make_bucket(bucket)
-
-    def create_bucket_exists(self) -> bool:
-        try:
-            client = self._create_minio_client()
-            bucket = MinioConfiguration.MINIO_BUCKET
-
-            if not client.bucket_exists(bucket):
-                return False
-            return True
-        except Exception as e:
-            logger.error(f"Bucket check error: {e}")
-            return False
 
     def _find_file_path(self, filename, local_base_path=None, pattern="part-*.csv"):
         possible_paths = []
@@ -108,9 +105,12 @@ class MinioManager:
 
         raise FileNotFoundError(f"File '{filename}' not found in any known location")
 
-    def _build_s3_path(self, path=None, bucket=None, filename=None):
+    def _resolve_s3_path(self, path=None, bucket=None, filename=None):
         """
-        Build S3 path from various input formats
+        Resolve and normalize S3 path from various input formats.
+
+        Accepts full S3 URIs, relative paths, or filenames and converts them
+        to a standardized format with extracted components.
 
         Args:
             path: S3 path (can be full URI or relative path)
@@ -124,38 +124,78 @@ class MinioManager:
             bucket = MinioConfiguration.MINIO_BUCKET
 
         if path:
-            if path.startswith("s3a://"):
+            if path.startswith(S3_PREFIX):
                 s3_path = path
-                if "/" in path.replace("s3a://", ""):
-                    extracted_bucket = path.replace("s3a://", "").split("/")[0]
+                if "/" in path.replace(S3_PREFIX, ""):
+                    extracted_bucket = path.replace(S3_PREFIX, "").split("/")[0]
                     bucket = extracted_bucket
-                    object_path = "/".join(path.replace("s3a://", "").split("/")[1:])
+                    object_path = "/".join(path.replace(S3_PREFIX, "").split("/")[1:])
                 else:
-                    object_path = path.replace(f"s3a://{bucket}/", "")
+                    object_path = path.replace(f"{S3_PREFIX}{bucket}/", "")
             else:
                 object_path = path
-                s3_path = f"s3a://{bucket}/{path}"
+                s3_path = f"{S3_PREFIX}{bucket}/{path}"
 
         elif filename:
             default_path = MinioConfiguration.MINIO_PATH or "data/csv"
             object_path = f"{default_path}/{filename}"
-            s3_path = f"s3a://{bucket}/{object_path}"
+            s3_path = f"{S3_PREFIX}{bucket}/{object_path}"
 
         else:
             object_path = MinioConfiguration.MINIO_PATH or "data"
-            s3_path = f"s3a://{bucket}/{object_path}"
+            s3_path = f"{S3_PREFIX}{bucket}/{object_path}"
 
         return s3_path, bucket, object_path
 
-    def test_connection(self):
-        """Test MinIO connection using PySpark S3A and PyEQX reader"""
+    # endregion
+
+    # region Helper Methods
+    def build_s3_path(
+        self,
+        bucket: str | None = None,
+        layer: str | None = None,
+        filename: str | None = None,
+        is_directory: bool = False,
+    ) -> str:
+        """
+        Build S3 path from components.
+
+        Args:
+            bucket: Bucket name (defaults to configured bucket)
+            layer: Data layer (e.g., 'bronze', 'silver', 'gold')
+            filename: Object name/path
+            is_directory: If True, adds trailing slash for directory paths
+
+        Returns:
+            str: Complete S3A URI (e.g., 's3a://bucket/layer/filename')
+
+        """
+        bucket = bucket or MinioConfiguration.MINIO_BUCKET
+        parts = [S3_PREFIX + bucket]
+        if layer:
+            parts.append(layer)
+        if filename:
+            parts.append(filename)
+        path = "/".join(parts)
+
+        # Add trailing slash for directories (Delta Lake/Parquet folders)
+        if is_directory and not path.endswith("/"):
+            path += "/"
+
+        return path
+
+    # endregion
+
+    # region Storage Operations - Validate
+    def ensure_connection(self):
+        """Ensure MinIO connection using PySpark S3A and PyEQX reader"""
         try:
             bucket = MinioConfiguration.MINIO_BUCKET
 
             hadoop_conf = self.spark.sparkContext._jsc.hadoopConfiguration()
             MinioConfiguration.configure_s3a_hadoop(hadoop_conf)
 
-            s3a_uri = f"s3a://{bucket}/"
+            s3a_uri = f"{S3_PREFIX}{bucket}/"
             fs = self.spark.sparkContext._jvm.org.apache.hadoop.fs.FileSystem.get(
                 self.spark.sparkContext._jvm.java.net.URI(s3a_uri),
                 hadoop_conf,
@@ -171,9 +211,21 @@ class MinioManager:
         except Exception as e:
             StandardResult.error("MinIO connection failed", error=e)
 
-    def stop(self):
-        self.spark.stop()
+    def create_bucket_exists(self) -> bool:
+        try:
+            client = self._create_minio_client()
+            bucket = MinioConfiguration.MINIO_BUCKET
 
+            if not client.bucket_exists(bucket):
+                return False
+            return True
+        except Exception as e:
+            logger.error(f"Bucket check error: {e}")
+            return False
+
+    # endregion
+
+    # region Storage Operations - Read
     def read_data_from_s3(
         self,
         path: str = None,
@@ -199,15 +251,15 @@ class MinioManager:
         """
         try:
             reader = self._operation.get_reader()
-            s3_path, bucket, object_path = self._build_s3_path(path, bucket, filename)
-            df = reader.read_from_s3(
+            s3_path, bucket, object_path = self._resolve_s3_path(path, bucket, filename)
+            minio_data_df = reader.read_from_s3(
                 path=s3_path, format=format, schema=schema, options=options
             )
 
-            if df is None:
+            if minio_data_df is None:
                 StandardResult.error("Failed to read data: DataFrame is None")
 
-            return df
+            return minio_data_df
 
         except Exception as e:
             StandardResult.error("Read from S3 failed", error=e)
@@ -241,9 +293,12 @@ class MinioManager:
         except Exception as e:
             StandardResult.error("List objects failed", error=e)
 
+    # endregion
+
+    # region Storage Operations - Write
     def write_data_to_s3(
         self,
-        df=None,
+        data=None,
         local_file_path: str = None,
         schema=None,
         s3_path: str = None,
@@ -256,7 +311,7 @@ class MinioManager:
         Upload DataFrame or local file to S3 in various formats
 
         Args:
-            df: Spark DataFrame to write (if provided, local_file_path is ignored)
+            data: Spark DataFrame to write (if provided, local_file_path is ignored)
             local_file_path: Local CSV file path to read and upload
             s3_path: S3 path (without bucket)
             output_filename: Output directory/filename
@@ -284,14 +339,14 @@ class MinioManager:
                 else:
                     read_options = options
 
-                df = reader.read_from(
+                local_data_df = reader.read_from(
                     format=source_format,
                     path=local_file_path,
                     schema=schema,
                     options=read_options,
                 )
 
-            if df is None:
+            if data is None:
                 StandardResult.error("Either df or local_file_path is required")
 
             bucket = MinioConfiguration.MINIO_BUCKET
@@ -303,7 +358,7 @@ class MinioManager:
             else:
                 full_path = f"{bucket}/{s3_path}"
 
-            s3a_path = f"s3a://{full_path}"
+            s3a_path = f"{S3_PREFIX}{full_path}"
 
             if format.lower() == "delta":
                 delta_options = options or {
@@ -311,11 +366,11 @@ class MinioManager:
                     "overwriteSchema": "true",
                 }
                 writer.write_to_s3(
-                    data=df, mode=mode, path=full_path, options=delta_options
+                    data=data, mode=mode, path=full_path, options=delta_options
                 )
             else:
                 writer.write_to(
-                    data=df,
+                    data=data,
                     mode=mode,
                     path=s3a_path,
                     format=format,
@@ -324,3 +379,11 @@ class MinioManager:
 
         except Exception as e:
             StandardResult.error("Upload to S3 failed", error=e)
+
+    # endregion
+
+    # region Storage Operations - Cleanup
+    def stop(self):
+        self.spark.stop()
+
+    # endregion

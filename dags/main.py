@@ -99,7 +99,7 @@ def execute():
         ),
         k8s.V1VolumeMount(
             name="shared",
-            mount_path="/app/etl",
+            mount_path="/app/helper",
             sub_path=f"app-dags-dir/{PROJECT_NAME}/helper",
             read_only=True,
         ),
@@ -111,7 +111,7 @@ def execute():
             k8s.V1VolumeMount(
                 name="shared",
                 mount_path="/app/.venv",
-                sub_path=f"app-venv-dir/{KERNEL_NAME}-spark-3-5", ##เดี๋ยวต้องมาดูว่าเปลี่ยนยังไง
+                sub_path=f"app-venv-dir/{KERNEL_NAME}-spark-3-5",  # TODO: Review how to change this
             ),
         ]
 
@@ -167,7 +167,11 @@ def execute():
             },
         )
 
-        return [task_minio_ops, task_postgres_ops, task_mongodb_ops] >> task_cross_db_ops
+        return [
+            task_minio_ops,
+            task_postgres_ops,
+            task_mongodb_ops,
+        ] >> task_cross_db_ops
 
     infrastructure_tools_ojt_operations()
 

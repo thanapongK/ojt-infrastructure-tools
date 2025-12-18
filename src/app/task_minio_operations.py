@@ -33,6 +33,7 @@ from pyeqx.opentelemetry.spark import configure_spark_options
 from app.utils import parse_telemetry_config
 from helper.standard_result import StandardResult
 from helper.minio_manager import MinioManager
+from config.minio_configuration import MinioConfiguration
 
 
 @dataclass
@@ -87,18 +88,24 @@ class RunMinioProcess(Process):
         try:
             self._test_connection()
 
-            csv_pattern = "/opt/airflow/ojt/data/processed/valid_users.csv"
+            csv_pattern = os.path.join(
+                MinioConfiguration.DATA_DIR, MinioConfiguration.VALID_USERS_FILE
+            )
             csv_files = glob.glob(csv_pattern)
 
             if csv_files:
                 self._upload_data(
-                    local_file_path=csv_files[0], output_filename="raw_valid_user_csv_data"
+                    local_file_path=csv_files[0],
+                    output_filename=MinioConfiguration.OUTPUT_CSV_DATA,
                 )
 
-            json_path = "/opt/airflow/ojt/data/processed/simple_json.json"
+            json_path = os.path.join(
+                MinioConfiguration.DATA_DIR, MinioConfiguration.SIMPLE_JSON_FILE
+            )
             if os.path.exists(json_path):
                 self._upload_data(
-                    local_file_path=json_path, output_filename="simple_json_data"
+                    local_file_path=json_path,
+                    output_filename=MinioConfiguration.OUTPUT_JSON_DATA,
                 )
 
             self._read_all_data()
@@ -108,7 +115,7 @@ class RunMinioProcess(Process):
 
     def _test_connection(self):
         try:
-            self.__manager.test_connection()
+            self.__manager.ensure_connection()
         except Exception as e:
             StandardResult.error("MinIO connection failed", error=e)
 
@@ -116,10 +123,10 @@ class RunMinioProcess(Process):
         try:
             self.__manager.write_data_to_s3(
                 local_file_path=local_file_path,
-                s3_path="silver",
+                s3_path=MinioConfiguration.S3_LAYER_SILVER,
                 output_filename=output_filename,
-                format="delta",
-                mode="overwrite",
+                format=MinioConfiguration.DEFAULT_FORMAT,
+                mode=MinioConfiguration.DEFAULT_MODE,
             )
 
         except Exception as e:
@@ -127,11 +134,26 @@ class RunMinioProcess(Process):
 
     def _read_all_data(self):
         try:
-            csv_path = "s3a://ojtbucket/silver/raw_valid_user_csv_data"
-            csv_df = self.__manager.read_data_from_s3(path=csv_path, format="delta")
+            # Build S3 paths dynamically from components
+            csv_path = self.__manager.build_s3_path(
+                bucket=MinioConfiguration.MINIO_BUCKET,
+                layer=MinioConfiguration.S3_LAYER_SILVER,
+                filename=MinioConfiguration.OUTPUT_CSV_DATA,
+                is_directory=True,
+            )
+            csv_df = self.__manager.read_data_from_s3(
+                path=csv_path, format=MinioConfiguration.DEFAULT_FORMAT
+            )
 
-            json_path = "s3a://ojtbucket/silver/simple_json_data"
-            json_df = self.__manager.read_data_from_s3(path=json_path, format="delta")
+            json_path = self.__manager.build_s3_path(
+                bucket=MinioConfiguration.MINIO_BUCKET,
+                layer=MinioConfiguration.S3_LAYER_SILVER,
+                filename=MinioConfiguration.OUTPUT_JSON_DATA,
+                is_directory=True,
+            )
+            json_df = self.__manager.read_data_from_s3(
+                path=json_path, format=MinioConfiguration.DEFAULT_FORMAT
+            )
 
         except Exception as e:
             StandardResult.error("Read data failed", error=e)

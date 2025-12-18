@@ -1,7 +1,7 @@
 """
 Task: MongoDB Operations
 Test connection, read version, update version
-Pattern: เหมือน task_postgres_operations.py แต่ใช้ MongoDB
+Pattern: Similar to task_postgres_operations.py but uses MongoDB
 """
 
 from dataclasses import dataclass
@@ -97,7 +97,7 @@ class RunMongoDBProcess(Process):
 
     def _test_connection(self):
         try:
-            self.__manager.test_connection()
+            self.__manager.ensure_connection()
         except Exception as e:
             StandardResult.error("MongoDB connection failed", error=e)
 

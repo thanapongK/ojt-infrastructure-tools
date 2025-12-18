@@ -5,12 +5,32 @@ from pyeqx.core.configuration import Configuration
 
 
 class MinioConfiguration:
+    # MinIO connection settings
     MINIO_ENDPOINT = "http://localhost:9000"
     MINIO_ACCESS_KEY = "user"
     MINIO_SECRET_KEY = "password123"
     MINIO_BUCKET = "ojtbucket"
     MINIO_PATH = "data"
     TABLE = "db_connect"
+    S3A_PREFIX = "s3a://"
+
+    # Local file paths
+    DATA_DIR = "/opt/airflow/ojt/data/processed"
+    VALID_USERS_FILE = "valid_users.csv"
+    SIMPLE_JSON_FILE = "simple_json.json"
+
+    # S3 data layers
+    S3_LAYER_BRONZE = "bronze"
+    S3_LAYER_SILVER = "silver"
+    S3_LAYER_GOLD = "gold"
+
+    # Output filenames in S3
+    OUTPUT_CSV_DATA = "raw_valid_user_csv_data"
+    OUTPUT_JSON_DATA = "simple_json_data"
+
+    # Write configuration
+    DEFAULT_FORMAT = "delta"
+    DEFAULT_MODE = "overwrite"
 
     # Storage parameter for method calls
     minio_param = "s3"

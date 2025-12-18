@@ -32,6 +32,7 @@ class StandardResult:
         )
     """
 
+    # region Special Methods
     def __init__(
         self,
         success: bool,
@@ -54,6 +55,17 @@ class StandardResult:
         self.error = error
         self.data = kwargs
 
+    def __repr__(self) -> str:
+        """String representation of result"""
+        status = "✅ SUCCESS" if self.success else "❌ ERROR"
+        data_summary = ", ".join(
+            f"{k}={v}" for k, v in self.data.items() if k != "data_df"
+        )
+        return f"StandardResult({status}: {self.message} | {data_summary})"
+
+    # endregion
+
+    # region Class Methods
     @classmethod
     def success(
         cls,
@@ -109,6 +121,9 @@ class StandardResult:
         logger.error(error_msg)
         raise
 
+    # endregion
+
+    # region Static Methods
     @staticmethod
     def show_log_info(
         messages: list[str], level: str = "info", prefix: str = ""
@@ -133,6 +148,9 @@ class StandardResult:
         for message in messages:
             log_method(f"{prefix}{message}")
 
+    # endregion
+
+    # region Public Methods
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert result to dictionary
@@ -149,10 +167,4 @@ class StandardResult:
         result.update(self.data)
         return result
 
-    def __repr__(self) -> str:
-        """String representation of result"""
-        status = "✅ SUCCESS" if self.success else "❌ ERROR"
-        data_summary = ", ".join(
-            f"{k}={v}" for k, v in self.data.items() if k != "data_df"
-        )
-        return f"StandardResult({status}: {self.message} | {data_summary})"
+    # endregion

@@ -1,7 +1,7 @@
 """
 Task: PostgreSQL Operations
 Test connection, read version, update version
-Pattern: อิงจาก task_spark_process.py
+Pattern: Based on task_spark_process.py
 """
 
 from dataclasses import dataclass
@@ -97,7 +97,7 @@ class RunPostgresProcess(Process):
 
     def _test_connection(self):
         try:
-            self.__manager.test_connection()
+            self.__manager.ensure_connection()
         except Exception as e:
             StandardResult.error("PostgreSQL connection failed", error=e)
 

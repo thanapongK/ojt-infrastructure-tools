@@ -6,7 +6,8 @@ Provides validation functions for user DataFrame operations
 import logging
 from typing import Tuple, Dict, Any
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, trim, lit
+from pyspark.sql import functions as F
+from helper.standard_result import StandardResult
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +60,13 @@ class UserValidator:
             )
 
             for col_name in missing:
-                df_fixed = df_fixed.withColumn(col_name, lit(None).cast("string"))
+                df_fixed = df_fixed.withColumn(col_name, F.lit(None).cast("string"))
 
             df_fixed = df_fixed.select(UserValidator.REQUIRED_HEADERS)
             return df_fixed
 
         except Exception as e:
-            raise ValueError(f"Header fix error: {str(e)}")
+            StandardResult.error("Header fix error", error=e)
 
     @staticmethod
     def remove_duplicate_emails(df: DataFrame) -> DataFrame:
@@ -89,23 +90,23 @@ class UserValidator:
             ]
 
             if missing_cols:
-                raise ValueError(f"Missing required columns: {', '.join(missing_cols)}")
+                StandardResult.error(
+                    f"Missing required columns: {', '.join(missing_cols)}"
+                )
 
             valid_df = df.filter(
-                (col("email").rlike(UserValidator.EMAIL_PATTERN))
-                & (col("first_name").isNotNull())
-                & (trim(col("first_name")) != "")
-                & (col("last_name").isNotNull())
-                & (trim(col("last_name")) != "")
-                & (col("phone").rlike(UserValidator.PHONE_PATTERN))
+                (F.col("email").rlike(UserValidator.EMAIL_PATTERN))
+                & (F.col("first_name").isNotNull())
+                & (F.trim(F.col("first_name")) != "")
+                & (F.col("last_name").isNotNull())
+                & (F.trim(F.col("last_name")) != "")
+                & (F.col("phone").rlike(UserValidator.PHONE_PATTERN))
             )
 
             return valid_df
 
-        except ValueError:
-            raise
         except Exception as e:
-            raise ValueError(f"Data validation error: {str(e)}")
+            StandardResult.error("Data validation error", error=e)
 
     @staticmethod
     def validate_all(df: DataFrame, auto_fix_headers: bool = True) -> DataFrame:
@@ -117,7 +118,7 @@ class UserValidator:
                 df_with_fixed_headers = UserValidator.fix_headers(df)
             else:
                 if not UserValidator.validate_headers(df):
-                    raise ValueError("Invalid headers")
+                    StandardResult.error("Invalid headers")
                 df_with_fixed_headers = df
 
             df_deduplicated = UserValidator.remove_duplicate_emails(
@@ -126,27 +127,5 @@ class UserValidator:
             valid_df = UserValidator.validate_data(df_deduplicated)
             return valid_df
 
-        except ValueError:
-            raise
         except Exception as e:
-            raise ValueError(f"Validation pipeline error: {str(e)}")
-
-
-def validate_headers(df: DataFrame) -> bool:
-    return UserValidator.validate_headers(df)
-
-
-def fix_headers(df: DataFrame) -> DataFrame:
-    return UserValidator.fix_headers(df)
-
-
-def remove_duplicate_emails(df: DataFrame) -> DataFrame:
-    return UserValidator.remove_duplicate_emails(df)
-
-
-def validate_data(df: DataFrame) -> DataFrame:
-    return UserValidator.validate_data(df)
-
-
-def validate_all(df: DataFrame, auto_fix_headers: bool = True) -> DataFrame:
-    return UserValidator.validate_all(df, auto_fix_headers)
+            StandardResult.error("Validation pipeline error", error=e)

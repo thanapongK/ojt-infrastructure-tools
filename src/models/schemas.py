@@ -93,7 +93,7 @@ def get_user_schema() -> StructType:
     )
 
 
-# Schema registry - สำหรับเรียกใช้แบบ dynamic
+# Schema registry - for dynamic schema access
 SCHEMAS = {
     "raw_valid_data_user": get_raw_valid_data_user_schema,
     "db_connect": get_db_connect_schema,

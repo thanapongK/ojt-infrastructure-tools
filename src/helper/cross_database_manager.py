@@ -14,7 +14,7 @@ if parent_dir not in sys.path:
 from helper.mongodb_manager import MongoDBManeger
 from helper.postgres_manager import PostgresManager
 from helper.minio_manager import MinioManager
-from helper.user_validator import validate_all
+from helper.user_validator import UserValidator
 from helper.standard_result import StandardResult
 
 logging.basicConfig(level=logging.INFO)
@@ -27,16 +27,20 @@ class CrossDatabaseManager:
     Supports: data transfer
     """
 
+    # region Special Methods
     def __init__(self):
         self.mongo_manager = None
         self.postgres_manager = None
         self.minio_manager = None
         self.supported_databases = ["mongodb", "postgresql", "minio"]
 
+    # endregion
+
+    # region Private Methods
     def _get_manager(self, db_type: str):
         """Get or create manager based on database type"""
         if db_type not in ["mongodb", "postgresql", "minio", "s3"]:
-            raise ValueError(f"Unsupported database type: {db_type}")
+            StandardResult.error(f"Unsupported database type: {db_type}")
 
         if db_type == "mongodb":
             if self.mongo_manager is None:
@@ -51,9 +55,12 @@ class CrossDatabaseManager:
                 self.minio_manager = MinioManager()
             return self.minio_manager
 
-    def test_connections(self, db_type: list = None):
+    # endregion
+
+    # region Database Operations - Validate
+    def ensure_connections(self, db_type: list = None):
         """
-        Test connections to multiple databases and raise error if any fail
+        Ensure connections to multiple databases and raise error if any fail
 
         Args:
             db_type: List of database types to test ['mongodb', 'postgresql', 's3']
@@ -72,7 +79,7 @@ class CrossDatabaseManager:
 
         for db in db_type:
             try:
-                self._get_manager(db).test_connection()
+                self._get_manager(db).ensure_connection()
             except Exception as e:
                 logger.error(f"❌ {db}: {e}")
                 connection_errors.append(f"❌ {db}: {str(e)}")
@@ -80,10 +87,13 @@ class CrossDatabaseManager:
         if connection_errors:
             error_summary = "\n".join(connection_errors)
             logger.error(f"\n🚨 Connection Failures:\n{error_summary}")
-            raise RuntimeError(f"Connection test failed:\n{error_summary}")
+            StandardResult.error(f"Connection test failed:\n{error_summary}")
 
         return True
 
+    # endregion
+
+    # region Database Operations - Read
     def read_from_database(self, db_type: str, container: str = None):
         """
         Read data from database using unified container parameter.
@@ -96,7 +106,7 @@ class CrossDatabaseManager:
             PySpark DataFrame
         """
         if db_type not in ["mongodb", "postgresql"]:
-            raise ValueError(
+            StandardResult.error(
                 f"Unsupported database type: {db_type}. Use 'mongodb' or 'postgresql' only."
             )
 
@@ -107,6 +117,32 @@ class CrossDatabaseManager:
         else:  # postgresql
             return manager.read_data(table=container)
 
+    def read_from_storage(self, **kwargs):
+        """
+        Read data from Object Storage (MinIO/S3)
+
+        Args:
+            **kwargs: Storage-specific parameters
+
+        MinIO kwargs:
+            - path: S3 path to read from (required)
+            - format: File format ('csv', 'parquet', 'delta', 'json') (default: 'delta')
+
+        Returns:
+            PySpark DataFrame
+        """
+        manager = self._get_manager("minio")
+        path = kwargs.get("path")
+        file_format = kwargs.get("format", "delta")
+
+        if not path:
+            StandardResult.error("MinIO read requires 'path' parameter")
+
+        return manager.read_data_from_s3(path=path, format=file_format)
+
+    # endregion
+
+    # region Database Operations - Write
     def write_to_database(
         self, df, db_type: str, name: str = None, mode: str = "append"
     ):
@@ -123,7 +159,7 @@ class CrossDatabaseManager:
             RuntimeError: If write operation fails
         """
         if db_type not in ["mongodb", "postgresql"]:
-            raise ValueError(
+            StandardResult.error(
                 f"Unsupported database type: {db_type}. Use 'mongodb' or 'postgresql' only."
             )
 
@@ -136,7 +172,7 @@ class CrossDatabaseManager:
                 manager.insert_data_to(df=df, table=name, mode=mode)
         except Exception as e:
             logger.error(f"✗ Write failed {db_type}: {e}")
-            raise
+            StandardResult.error(f"Write failed {db_type}: {e}", error=e)
 
     def write_to_storage(self, df, **kwargs):
         """
@@ -165,10 +201,10 @@ class CrossDatabaseManager:
         options = kwargs.get("options")
 
         if not path:
-            raise ValueError("S3/MinIO write requires 'path' parameter")
+            StandardResult.error("S3/MinIO write requires 'path' parameter")
 
         manager.write_data_to_s3(
-            df=df,
+            data=df,
             s3_path=path,
             output_filename=output_filename,
             format=format,
@@ -176,29 +212,21 @@ class CrossDatabaseManager:
             options=options,
         )
 
-    def read_from_storage(self, **kwargs):
-        """
-        Read data from Object Storage (MinIO/S3)
+    # endregion
 
-        Args:
-            **kwargs: Storage-specific parameters
+    # region Database Operations - Cleanup
+    def cleanup(self):
+        """Cleanup resources and close connections"""
+        if self.mongo_manager:
+            self.mongo_manager.stop()
+        if self.postgres_manager:
+            self.postgres_manager.stop()
+        if self.minio_manager:
+            self.minio_manager.stop()
 
-        MinIO kwargs:
-            - path: S3 path to read from (required)
-            - format: File format ('csv', 'parquet', 'delta', 'json') (default: 'delta')
+    # endregion
 
-        Returns:
-            PySpark DataFrame
-        """
-        manager = self._get_manager("minio")
-        path = kwargs.get("path")
-        file_format = kwargs.get("format", "delta")
-
-        if not path:
-            raise ValueError("MinIO read requires 'path' parameter")
-
-        return manager.read_data_from_s3(path=path, format=file_format)
-
+    # region Cross-Database Transfer Logic
     def write_version_to_target(
         self,
         source_db: str,
@@ -232,13 +260,15 @@ class CrossDatabaseManager:
             dict: Result with success status and transfer details
         """
         try:
-            self.test_connections(db_type=[read, write])
+            self.ensure_connections(db_type=[read, write])
             self.write_version_to_target(
                 source_db=read, target_db=write, db_name=db_name
             )
 
         except Exception as e:
-            raise RuntimeError(f"Version transfer failed {read}->{write}: {str(e)}")
+            StandardResult.error(
+                f"Version transfer failed {read}->{write}: {str(e)}", error=e
+            )
 
     def cross_data_to(self, read: str, write: str, **kwargs):
         """
@@ -275,17 +305,17 @@ class CrossDatabaseManager:
             storage_types = ["s3", "minio"]
 
             if read not in database_types + storage_types:
-                raise ValueError(f"Unsupported source type: {read}")
+                StandardResult.error(f"Unsupported source type: {read}")
 
             if write not in database_types + storage_types:
-                raise ValueError(f"Unsupported target type: {write}")
+                StandardResult.error(f"Unsupported target type: {write}")
 
             if read in database_types:
                 container = kwargs.get("source_collection") or kwargs.get(
                     "source_table"
                 )
                 if not container:
-                    raise ValueError(
+                    StandardResult.error(
                         f"Missing source container for {read} (use source_collection or source_table)"
                     )
 
@@ -295,7 +325,7 @@ class CrossDatabaseManager:
                 source_path = kwargs.get("source_path")
 
                 if not source_path:
-                    raise ValueError(f"Missing source_path for {read}")
+                    StandardResult.error(f"Missing source_path for {read}")
 
                 read_kwargs = {
                     "path": source_path,
@@ -305,18 +335,18 @@ class CrossDatabaseManager:
 
             row_count = df.count()
             if row_count == 0:
-                raise ValueError(f"No data found in source: {read}")
+                StandardResult.error(f"No data found in source: {read}")
 
             source_type = read if read not in storage_types else "s3"
             target_type = write if write not in storage_types else "s3"
-            self.test_connections(db_type=[source_type, target_type])
+            self.ensure_connections(db_type=[source_type, target_type])
 
             if write in database_types:
                 target_name = kwargs.get("target_collection") or kwargs.get(
                     "target_table"
                 )
                 if not target_name:
-                    raise ValueError(
+                    StandardResult.error(
                         f"Missing target container for {write} (use target_collection or target_table)"
                     )
                 mode = kwargs.get("mode", "append")
@@ -327,7 +357,7 @@ class CrossDatabaseManager:
             elif write in storage_types:
                 target_path = kwargs.get("target_path")
                 if not target_path:
-                    raise ValueError(f"Missing target_path for {write}")
+                    StandardResult.error(f"Missing target_path for {write}")
                 write_kwargs = {
                     "path": target_path,
                     "format": kwargs.get("format", "delta"),
@@ -346,7 +376,7 @@ class CrossDatabaseManager:
             }
 
         except Exception as e:
-            raise RuntimeError(f"Transfer failed {read}->{write}: {str(e)}") from e
+            StandardResult.error(f"Transfer failed {read}->{write}: {str(e)}", error=e)
 
     def transfer_validated_user_data(
         self, write: str, source_path: str, target_name: str, mode: str = "overwrite"
@@ -367,19 +397,19 @@ class CrossDatabaseManager:
             dict: Result with success status and validation details
         """
         try:
-            self.test_connections(db_type=["s3", write])
+            self.ensure_connections(db_type=["s3", write])
 
             df = self.read_from_storage(path=source_path, format="delta")
             total_records = df.count()
 
             if total_records == 0:
-                raise ValueError(f"No data found in source: {source_path}")
+                StandardResult.error(f"No data found in source: {source_path}")
 
-            validated_df = validate_all(df, auto_fix_headers=True)
+            validated_df = UserValidator.validate_all(df, auto_fix_headers=True)
             valid_records = validated_df.count()
 
             if valid_records == 0:
-                raise ValueError("No valid records after validation")
+                StandardResult.error("No valid records after validation")
 
             self.write_to_database(
                 df=validated_df, db_type=write, name=target_name, mode=mode
@@ -389,15 +419,8 @@ class CrossDatabaseManager:
             return (total_records, valid_records, invalid_records)
 
         except Exception as e:
-            raise RuntimeError(
-                f"Validated transfer failed {source_path}->{write}: {str(e)}"
+            StandardResult.error(
+                f"Validated transfer failed {source_path}->{write}: {str(e)}", error=e
             )
 
-    def cleanup(self):
-        """Cleanup resources and close connections"""
-        if self.mongo_manager:
-            self.mongo_manager.stop()
-        if self.postgres_manager:
-            self.postgres_manager.stop()
-        if self.minio_manager:
-            self.minio_manager.stop()
+    # endregion

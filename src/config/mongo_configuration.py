@@ -1,13 +1,14 @@
 """
 Unified MongoDB + PyEQX Configuration
-รวม config ของ MongoDB และ PyEQX ไว้ใน class เดียว
+Combines MongoDB and PyEQX configuration in a single class
 """
 
 from pyeqx.core.configuration import Configuration
+from config.minio_configuration import MinioConfiguration
 
 
 class MongoConfiguration:
-    # MongoDB Constants
+    # region MongoDB Constants
     MONGO_HOST = "host.docker.internal"
     MONGO_PORT = 27017
     DATABASE = "ojt_demo"
@@ -16,7 +17,9 @@ class MongoConfiguration:
 
     # Database parameter for method calls
     mongo_param = "mongodb"
+    # endregion MongoDB Constants
 
+    # region MongoDB Helper Methods
     @classmethod
     def set_database(cls, db_name: str):
         """Set the active database name
@@ -46,6 +49,9 @@ class MongoConfiguration:
         """Return full MongoDB URI including database"""
         return f"{cls.get_mongo_uri()}/{cls.DATABASE}"
 
+    # endregion MongoDB Helper Methods
+
+    # region MongoDB Configuration Methods
     @classmethod
     def get_mongo_config(cls) -> dict:
         """Return MongoDB config as dictionary"""
@@ -99,10 +105,10 @@ class MongoConfiguration:
                     "system": {
                         "type": "s3",
                         "properties": {
-                            "endpoint": "http://localhost:9000",
-                            "accessKey": "user",
-                            "secretKey": "password123",
-                            "bucketName": "datadd/data",
+                            "endpoint": MinioConfiguration.get_minio_endpoint(),
+                            "accessKey": MinioConfiguration.MINIO_ACCESS_KEY,
+                            "secretKey": MinioConfiguration.MINIO_SECRET_KEY,
+                            "bucketName": f"{MinioConfiguration.MINIO_BUCKET}/{MinioConfiguration.MINIO_PATH}",
                         },
                     },
                     "mongodb": {
@@ -125,3 +131,5 @@ class MongoConfiguration:
             "mongo": cls.get_mongo_config(),
             "pyeqx": cls.get_pyeqx_config(),
         }
+
+    # endregion MongoDB Configuration Methods

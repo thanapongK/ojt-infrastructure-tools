@@ -1,14 +1,15 @@
 """
 Unified PostgreSQL + PyEQX Configuration
-รวม config ของ PostgreSQL และ PyEQX ไว้ใน class เดียว
+Combines PostgreSQL and PyEQX configuration in a single class
 """
 
 import os
 from pyeqx.core.configuration import Configuration
+from config.minio_configuration import MinioConfiguration
 
 
 class PostgresConfiguration:
-    # PostgreSQL Constants
+    # region PostgreSQL Constants
     IS_DOCKER = os.path.exists("/.dockerenv")
     POSTGRES_HOST = "localhost" if not IS_DOCKER else "host.docker.internal"
     POSTGRES_PORT = 5432
@@ -23,7 +24,9 @@ class PostgresConfiguration:
     POSTGRES_JDBC_URL = (
         f"jdbc:postgresql://{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
     )
+    # endregion PostgreSQL Constants
 
+    # region PostgreSQL Helper Methods
     @classmethod
     def set_database(cls, db_name: str):
         """Set the active database name
@@ -46,6 +49,9 @@ class PostgresConfiguration:
         """Switch to production database (ojt_demo)"""
         cls.set_database("ojt_demo")
 
+    # endregion PostgreSQL Helper Methods
+
+    # region PostgreSQL Configuration Methods
     @classmethod
     def get_postgres_config(cls) -> dict:
         """Return PostgreSQL config as dictionary"""
@@ -101,10 +107,10 @@ class PostgresConfiguration:
                     "system": {
                         "type": "s3",
                         "properties": {
-                            "endpoint": "http://localhost:9000",
-                            "accessKey": "user",
-                            "secretKey": "password123",
-                            "bucketName": "datadd/data",
+                            "endpoint": MinioConfiguration.get_minio_endpoint(),
+                            "accessKey": MinioConfiguration.MINIO_ACCESS_KEY,
+                            "secretKey": MinioConfiguration.MINIO_SECRET_KEY,
+                            "bucketName": f"{MinioConfiguration.MINIO_BUCKET}/{MinioConfiguration.MINIO_PATH}",
                         },
                     },
                     "postgresql": {
@@ -128,3 +134,5 @@ class PostgresConfiguration:
             "postgres": cls.get_postgres_config(),
             "pyeqx": cls.get_pyeqx_config(),
         }
+
+    # endregion PostgreSQL Configuration Methods
