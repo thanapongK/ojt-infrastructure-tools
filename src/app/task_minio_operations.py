@@ -32,7 +32,7 @@ from pyeqx.opentelemetry.spark import configure_spark_options
 
 from app.utils import parse_telemetry_config
 from config import MinioConfiguration
-from helper import MinioManager, StandardResult
+from helper import MinioManager, StandardResult, mock_user_data, mock_version_data
 
 
 @dataclass
@@ -87,25 +87,22 @@ class RunMinioProcess(Process):
         try:
             self._ensure_connection()
 
-            csv_pattern = os.path.join(
-                MinioConfiguration.DATA_DIR, MinioConfiguration.VALID_USERS_FILE
-            )
-            csv_files = glob.glob(csv_pattern)
+            # Get Spark session for mock data creation
+            spark = self.operation.get_current_spark_session()
 
-            if csv_files:
-                self._upload_data(
-                    local_file_path=csv_files[0],
-                    output_filename=MinioConfiguration.OUTPUT_CSV_DATA,
-                )
-
-            json_path = os.path.join(
-                MinioConfiguration.DATA_DIR, MinioConfiguration.SIMPLE_JSON_FILE
+            # Upload mock CSV user data
+            csv_df = mock_user_data(spark)
+            self._upload_data(
+                data=csv_df,
+                output_filename=MinioConfiguration.OUTPUT_CSV_DATA,
             )
-            if os.path.exists(json_path):
-                self._upload_data(
-                    local_file_path=json_path,
-                    output_filename=MinioConfiguration.OUTPUT_JSON_DATA,
-                )
+
+            # Upload mock JSON version data
+            json_df = mock_version_data(spark)
+            self._upload_data(
+                data=json_df,
+                output_filename=MinioConfiguration.OUTPUT_JSON_DATA,
+            )
 
             self._read_all_data()
 
@@ -118,9 +115,13 @@ class RunMinioProcess(Process):
         except Exception as e:
             StandardResult.error("MinIO connection failed", error=e)
 
-    def _upload_data(self, local_file_path: str, output_filename: str):
+    def _upload_data(
+        self, output_filename: str, data=None, local_file_path: str = None
+    ):
+        """Upload data to S3 - supports both DataFrame and local file"""
         try:
             self.__manager.write_data_to_s3(
+                data=data,
                 local_file_path=local_file_path,
                 s3_path=MinioConfiguration.S3_LAYER_SILVER,
                 output_filename=output_filename,
@@ -129,7 +130,8 @@ class RunMinioProcess(Process):
             )
 
         except Exception as e:
-            StandardResult.error(f"Upload failed: {local_file_path}", error=e)
+            error_msg = f"Upload failed: {output_filename}"
+            StandardResult.error(error_msg, error=e)
 
     def _read_all_data(self):
         try:
@@ -170,8 +172,9 @@ def run_minio_process(
 
     jar_packages = [
         "io.delta:delta-spark_2.12:3.3.2",
-        "com.amazonaws:aws-java-sdk-bundle:1.12.262",
+        "com.amazonaws:aws-java-sdk-bundle:1.12.262",  # this version use with hadoop 3.3.4
         "org.apache.hadoop:hadoop-aws:3.3.4",
+        "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.7",
     ]
 
     spark_config = {

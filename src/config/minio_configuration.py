@@ -7,9 +7,9 @@ from pyeqx.core.configuration import Configuration
 class MinioConfiguration:
     # MinIO connection settings
     MINIO_ENDPOINT = "http://localhost:9000"
-    MINIO_ACCESS_KEY = "user"
-    MINIO_SECRET_KEY = "password123"
-    MINIO_BUCKET = "ojtbucket"
+    MINIO_ACCESS_KEY = "admin"
+    MINIO_SECRET_KEY = "dWeXi9sj86"
+    MINIO_BUCKET = "ojt-testing-tools"
     MINIO_PATH = "data"
     TABLE = "db_connect"
     S3A_PREFIX = "s3a://"
@@ -85,6 +85,10 @@ class MinioConfiguration:
         hadoop_conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
         hadoop_conf.set("fs.s3a.connection.ssl.enabled", "false")
 
+    # NOTE: get_pyeqx_config() is deprecated - use config.json instead
+    # This method created hardcoded local Spark configuration
+    # All configuration should now come from config.json
+    """
     @classmethod
     def get_pyeqx_config(cls) -> Configuration:
         """Create PyEQX configuration for MinIO"""
@@ -162,10 +166,12 @@ class MinioConfiguration:
         }
 
         return Configuration.from_dict(config_dict)
+    """
 
     @classmethod
     def as_dict(cls) -> dict:
+        """Return MinIO configuration only (PyEQX config now comes from config.json)"""
         return {
             "minio": cls.get_minio_config(),
-            "pyeqx": cls.get_pyeqx_config(),
+            # "pyeqx": cls.get_pyeqx_config(),  # Deprecated - use config.json
         }

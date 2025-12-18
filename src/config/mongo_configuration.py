@@ -69,6 +69,10 @@ class MongoConfiguration:
             "collection": cls.COLLECTION,
         }
 
+    # NOTE: get_pyeqx_config() is deprecated - use config.json instead
+    # This method created hardcoded local Spark configuration
+    # All configuration should now come from config.json
+    """
     @classmethod
     def get_pyeqx_config(cls) -> Configuration:
         """Create PyEQX configuration based on Mongo settings"""
@@ -129,13 +133,14 @@ class MongoConfiguration:
         }
 
         return Configuration.from_dict(config_dict)
+    """
 
     @classmethod
     def as_dict(cls) -> dict:
-        """Return all configuration in unified dictionary"""
+        """Return MongoDB configuration only (PyEQX config now comes from config.json)"""
         return {
             "mongo": cls.get_mongo_config(),
-            "pyeqx": cls.get_pyeqx_config(),
+            # "pyeqx": cls.get_pyeqx_config(),  # Deprecated - use config.json
         }
 
     # endregion MongoDB Configuration Methods

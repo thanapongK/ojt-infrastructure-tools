@@ -1,0 +1,201 @@
+{
+  "dag": {
+    "retries": 0,
+    "retryDelay": 300,
+    "scheduleInterval": "0 11 2,6,10,13,17,21,24,28 * *",
+    "maxActiveRuns": 1,
+    "projectDesc": "OJT Infrastructure Testing Tools",
+    "projectTag": "cronus-ojt-infrastructure-testing-tools",
+    "tags": ["ojt", "infrastructure", "testing-tools", "minio", "mongodb", "postgres", "cross-database"]
+  },
+  "otel": {
+    "otelEndpointHost": "dd6x-opentelemetry-collector-dev.data-driven-dev.svc.cluster.local",
+    "otelResourceAttributes": "dataflow-transformation-service"
+  },
+  "dependencies": ["pyeqx-core==0.7.17", "pyeqx-opentelemetry==0.3.0"],
+  "engine": {
+    "storage": "system",
+    "tmpPath": "/home/jovyan/tmp/",
+    "isDedicatedSpark": false,
+    "sparkExecutorCore": 1,
+    "sparkExecutorMemory": "4g",
+    "sparkEndpoint": "",
+    "isDynamicAllocation": true,
+    "sparkExecutorMinInstances": 1,
+    "sparkExecutorMaxInstances": 3,
+    "sparkExecutorServiceAccount": "spark",
+    "jarPackages": [
+      "io.delta:delta-spark_2.12:3.3.2",
+      "com.amazonaws:aws-java-sdk-bundle:1.12.262",
+      "org.apache.hadoop:hadoop-aws:3.3.4",
+      "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.7"
+    ],
+    "sparkOptions": {
+      "spark.driver.extraJavaOptions": "-Dcom.sun.net.ssl.checkRevocation=false",
+      "spark.kubernetes.authenticate.driver.serviceAccountName": "spark",
+      "spark.kubernetes.authenticate.serviceAccountName": "spark",
+      "spark.kubernetes.executor.annotation.sidecar.istio.io/inject": "false",
+      "spark.extraListeners": "",
+      "spark.jars.ivy": "/home/spark/.ivy2",
+      "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+      "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
+      "spark.hadoop.fs.s3a.endpoint": "http://localhost:49689",
+      "spark.hadoop.fs.s3a.access.key": "admin",
+      "spark.hadoop.fs.s3a.secret.key": "dWeXi9sj86",
+      "spark.hadoop.fs.s3a.path.style.access": "true",
+      "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
+      "spark.hadoop.fs.s3a.connection.ssl.enabled": "false",
+      "spark.hadoop.fs.s3a.connection.timeout": "30000",
+      "spark.hadoop.fs.s3a.connection.establish.timeout": "10000",
+      "spark.hadoop.fs.s3a.attempts.maximum": "3",
+      "spark.hadoop.fs.s3a.retry.limit": "3",
+      "spark.hadoop.fs.s3a.retry.interval": "500ms",
+      "spark.hadoop.fs.s3a.socket.recv.buffer": "65536",
+      "spark.hadoop.fs.s3a.socket.send.buffer": "65536",
+      "spark.hadoop.fs.s3a.connection.maximum": "50",
+      "spark.hadoop.fs.s3a.threads.max": "10",
+      "spark.hadoop.fs.s3a.fast.upload": "true",
+      "spark.hadoop.fs.s3a.fast.upload.buffer": "bytebuffer",
+      "spark.hadoop.fs.s3a.block.size": "33554432",
+      "spark.hadoop.fs.s3a.metrics.enabled": "false",
+      "spark.ui.showConsoleProgress": "false"
+    }
+  },
+  "app": {
+    "name": "app_%s%s",
+    "suffix": "",
+    "execution": {
+      "inputPath": "./app.ipynb",
+      "outputPath": "output_%s%s.ipynb"
+    },
+    "datas": {
+      "raw": {
+        "src": {
+          "type": "file",
+          "properties": {
+            "storage": "MinIO",
+            "type": "csv",
+            "path": "data",
+            "options": {
+              "delimiter": "|",
+              "header": "false",
+              "inferSchema": "true",
+              "stripQuote": "false",
+              "extension": "dat"
+            }
+          }
+        },
+        "dest": {
+          "type": "database",
+          "properties": {
+            "storage": "postgresql",
+            "table": "db_connect"
+          }
+        }
+      },
+      "mongodb": {
+        "src": {
+          "type": "database",
+          "properties": {
+            "storage": "mongodb",
+            "database": "ojt_demo",
+            "collection": "db_connect"
+          }
+        },
+        "dest": {
+          "type": "file",
+          "properties": {
+            "storage": "MinIO",
+            "path": "ojt/mongodb",
+            "filename": "mongodb_json",
+            "format": "json"
+          }
+        }
+      },
+      "postgres": {
+        "src": {
+          "type": "database",
+          "properties": {
+            "storage": "postgresql",
+            "database": "ojt_demo",
+            "table": "db_connect"
+          }
+        },
+        "dest": {
+          "type": "file",
+          "properties": {
+            "storage": "MinIO",
+            "path": "ojt/postgresql",
+            "filename": "postgresql_json",
+            "format": "json"
+          }
+        }
+      }
+    },
+    "storages": {
+      "system": {
+        "type": "s3",
+        "properties": {
+          "endpoint": "http://localhost:49689",
+          "accessKey": "admin",
+          "secretKey": "dWeXi9sj86",
+          "bucketName": "ojt-testing-tools/data"
+        }
+      },
+      "MinIO": {
+        "type": "s3",
+        "properties": {
+          "endpoint": "http://localhost:49689",
+          "accessKey": "admin",
+          "secretKey": "dWeXi9sj86",
+          "bucketName": "ojt-testing-tools",
+          "path": "data",
+          "table": "db_connect",
+          "s3aUri": "s3a://ojt-testing-tools/data",
+          "layers": {
+            "bronze": "bronze",
+            "silver": "silver",
+            "gold": "gold"
+          },
+          "files": {
+            "validUsers": "valid_users.csv",
+            "simpleJson": "simple_json.json",
+            "outputCsv": "raw_valid_user_csv_data",
+            "outputJson": "simple_json_data",
+            "rawValidUser": "raw_valid_data_user"
+          },
+          "defaults": {
+            "format": "delta",
+            "mode": "overwrite"
+          }
+        }
+      },
+      "mongodb": {
+        "type": "mongodb",
+        "properties": {
+          "host": "host.docker.internal",
+          "port": 27017,
+          "uri": "mongodb://host.docker.internal:27017",
+          "database": "ojt_demo",
+          "testDatabase": "ojt_test",
+          "collection": "db_connect",
+          "userCollection": "user"
+        }
+      },
+      "postgresql": {
+        "type": "postgresql",
+        "properties": {
+          "host": "localhost",
+          "port": 5432,
+          "user": "postgres",
+          "password": "postgres",
+          "database": "ojt_demo",
+          "testDatabase": "ojt_test",
+          "jdbcUrl": "jdbc:postgresql://localhost:5432/ojt_demo",
+          "table": "db_connect",
+          "userTable": "user"
+        }
+      }
+    }
+  }
+}

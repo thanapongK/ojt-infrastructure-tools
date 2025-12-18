@@ -34,8 +34,19 @@ class PostgresManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, table: str = PostgresConfiguration.TABLE):
+    def __init__(
+        self, config=None, spark=None, table: str = PostgresConfiguration.TABLE
+    ):
+        """Initialize PostgresManager
+
+        Args:
+            config: PyEQX Configuration object from config.json (optional)
+            spark: Existing SparkSession (optional, will use config if provided)
+            table: Table name (default from PostgresConfiguration.TABLE)
+        """
         self.table = table
+        self._config = config  # Store config for later use
+        self._external_spark = spark  # Store external spark session
         if self._operation is None:
             self._initialize()
 
@@ -51,8 +62,29 @@ class PostgresManager:
     # region Private Methods
     def _initialize(self):
         try:
-            initialize_spark_environment()
-            config = PostgresConfiguration.get_pyeqx_config()
+            # If external spark session provided, use it directly
+            if self._external_spark is not None:
+                self.spark = self._external_spark
+                logging.getLogger(__name__).info(
+                    "✓ PostgreSQL Manager using external Spark session"
+                )
+                return
+
+            # Otherwise initialize with config
+            # No need for initialize_spark_environment() when using config.json
+            # Config already contains all Spark options and packages for cluster mode
+
+            # Use provided config or fall back to deprecated method
+            if self._config is not None:
+                config = self._config
+                logging.getLogger(__name__).info("✓ Using config from config.json")
+            else:
+                # Fallback to deprecated method (will fail since it's commented out)
+                StandardResult.error(
+                    "No config provided! Please pass config parameter. "
+                    "get_pyeqx_config() is deprecated."
+                )
+
             self._operation = Operation(
                 name="PostgreSQL_Operations",
                 config=config,

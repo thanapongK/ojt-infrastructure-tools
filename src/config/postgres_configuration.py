@@ -71,6 +71,10 @@ class PostgresConfiguration:
             "table": cls.TABLE,
         }
 
+    # NOTE: get_pyeqx_config() is deprecated - use config.json instead
+    # This method created hardcoded local Spark configuration
+    # All configuration should now come from config.json
+    """
     @classmethod
     def get_pyeqx_config(cls) -> Configuration:
         """Create PyEQX configuration based on PostgreSQL settings"""
@@ -132,13 +136,14 @@ class PostgresConfiguration:
             },
         }
         return Configuration.from_dict(config_dict)
+    """
 
     @classmethod
     def as_dict(cls) -> dict:
-        """Return all configuration in unified dictionary"""
+        """Return PostgreSQL configuration only (PyEQX config now comes from config.json)"""
         return {
             "postgres": cls.get_postgres_config(),
-            "pyeqx": cls.get_pyeqx_config(),
+            # "pyeqx": cls.get_pyeqx_config(),  # Deprecated - use config.json
         }
 
     # endregion PostgreSQL Configuration Methods

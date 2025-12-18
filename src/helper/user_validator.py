@@ -20,7 +20,9 @@ class UserValidator:
 
     # Validation patterns
     EMAIL_PATTERN = r"^[a-zA-Z0-9._%+-]+@ais\.com$"
-    PHONE_PATTERN = r"^\d{10}$"
+    PHONE_PATTERN = (
+        r"^(06|08|09)\d{8}$"  # Must start with 06, 08, or 09 followed by 8 digits
+    )
 
     @staticmethod
     def validate_headers(df: DataFrame) -> bool:

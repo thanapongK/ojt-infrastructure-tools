@@ -129,6 +129,7 @@ def run_mongodb_process(
     spark_executor_service_account = os.getenv("SPARK_EXECUTOR_SERVICE_ACCOUNT")
 
     jar_packages = [
+        "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.7",
         "org.mongodb.spark:mongo-spark-connector_2.12:10.2.0",
     ]
 
